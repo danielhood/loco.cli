@@ -3,7 +3,9 @@ package main
 import (
   "bufio"
   "os"
+  "errors"
   "fmt"
+  "time"
   "crypto/tls"
 
   "gopkg.in/resty.v0"
@@ -16,6 +18,27 @@ func main() {
 
   resty.SetTLSClientConfig(&tls.Config{ InsecureSkipVerify: true })
 
+  token, err := doLogin()
+  if (err != nil) {
+    os.Exit(1)
+  }
+
+  // Setup backround process
+  ticker := time.NewTicker(5 * time.Second)
+  quit := make(chan struct{})
+  go func() {
+      for {
+         select {
+          case <- ticker.C:
+              performSync()
+          case <- quit:
+              ticker.Stop()
+              fmt.Print("Exiting sync loop\n")
+              return
+          }
+      }
+   }()
+
   reader := bufio.NewReader(os.Stdin)
   for {
     fmt.Print("> ")
@@ -23,15 +46,20 @@ func main() {
 
     switch (text) {
     case "quit\n":
+      close (quit)
       os.Exit(0)
     case "help\n":
       showHelp()
     case "objects\n":
-      getObjects()
+      getObjects(token)
     default:
       fmt.Printf("Unknown command: %vType help for supported commands.\n", text)
     }
   }
+}
+
+func performSync() {
+  //fmt.Print("synching...\n")
 }
 
 func showHelp() {
@@ -40,19 +68,21 @@ func showHelp() {
   fmt.Print("objects\t\tList status of all objects\n")
 }
 
-func getObjects() {
-  //fmt.Print("Getting token from server: ", config.LocoServer)
+func doLogin() (string, error) {
+  //fmt.Print("user: ")
+  //user, _ := reader.ReadString('\n')
 
   token, err := clientApis.GetToken()
   if (err != nil) {
-    fmt.Printf("Unable to get token: %v\n", err)
-    return
+    fmt.Printf("Login failed. Unable to get token: %v\n", err)
+    return "", errors.New("Unable to get token")
   }
 
-  //fmt.Print("Got token: ", token)
+  return token, nil
+}
 
-  //fmt.Print("Getting object list")
-  objects, err := clientApis.GetObjects(token)
+func getObjects(token string) {
+  objects, _ := clientApis.GetObjects(token)
 
   for _, o := range objects {
       fmt.Printf("%v(%v): %v @ (%v, %v)\n", o.Id, o.Type, o.Name, o.X, o.Y)
